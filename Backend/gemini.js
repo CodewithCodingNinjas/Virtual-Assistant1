@@ -1,66 +1,40 @@
 import axios from "axios";
 
+// LLM fallback for commands the offline classifier can't resolve confidently.
+// Returns the raw model text (JSON is extracted/validated by the caller), or
+// null on any failure so the caller can degrade gracefully.
 const geminiResponse = async (command, userName, assistantName) => {
   try {
     const apiUrl = process.env.GEMINI_API_URL;
+    if (!apiUrl) throw new Error("GEMINI_API_URL is not set");
 
-const prompt = `You are a virtual assistant named ${assistantName} created by ${userName}. 
-You are not Google. You will now behave like a voice-enabled assistant.
-
-Your task is to understand the user's natural language input and respond with a JSON object like this:
+    const prompt = `You are a voice assistant named "${assistantName}", created by ${userName}.
+You are not Google. Interpret the user's natural-language command and reply with ONLY a single JSON object, no extra text, in this exact shape:
 
 {
-  "type": "general" | "google-search" | "youtube-search" |
-  "youtube-play" | "get-time" | "get-date" | "get-day" |
-  "get-month" | "calculator-open" | "instagram-open" |
-  "facebook-open" | "weather-show",
-  "userInput": "<original user input>" {only remove your name from userinput if 
-  exists} and agar ksis ne google ya youtube pe kuch search karne ko bola hai toh
-  userInput me only bo search baala text jaye,
-  "response": "<a short spoken response to read out loud to the user>"
+  "type": "general" | "google-search" | "youtube-search" | "youtube-play" | "get-time" | "get-date" | "get-day" | "get-month" | "calculator-open" | "instagram-open" | "facebook-open" | "weather-show",
+  "userInput": "<the user's request, with your name removed; for a search/play request, only the search text>",
+  "response": "<a short, voice-friendly reply to read aloud>"
 }
 
-Instructions:
--"type": determine the intent of the user.
--"userinput": original sentence the user spoke.
--"response": A short voice-friendly reply, e.g., "Sure, playing it now", "Here's
-what I found", "Today is Tuesday", etc.
+Rules:
+- "type" is the user's intent. Use "general" for factual/informational questions you can answer briefly.
+- For "google-search"/"youtube-search"/"youtube-play", put ONLY the query text in "userInput".
+- If asked who created you, answer with ${userName}.
+- Respond with the JSON object only — no markdown, no code fences, no commentary.
 
-Type meaning:
-- "general": if it's a factual or informational question.aur agar koi aisa question puchta hai jiska answer tumhe pata hai usko bhi general ki category me rakho bas short answer dena
-- "google-search": if user wants to search something on Google.
-- "youtube-search": if user wants to search something on YouTube.
-- "youtube-play": if user wants to directly play a video or song.
-- "calculator-open": if user wants to open a calculator.
-- "instagram-open": if user wants to open instagram.
-- "facebook-open": if user wants to open facebook.
-- "weather-show": if user wants to know weather.
-- "get-time": if user asks for current time.
-- "get-date": if user asks for today's date.
-- "get-day": if user asks what day it is.
-- "get-month": if user asks for the current month.
+User command: ${command}`;
 
-Important:
-- Use ${userName} agar koi puche tume kisne banaya
-- Only resopond with the JSON object, nothing else.
+    const result = await axios.post(
+      apiUrl,
+      { contents: [{ parts: [{ text: prompt }] }] },
+      { timeout: 10_000 }
+    );
 
-now your userInput- ${command}
-;`
-
-
-    const result = await axios.post(apiUrl, {
-      contents: [
-        {
-          parts: [
-            { text: prompt }
-          ]
-        }
-      ]
-    });
-
-    return result.data.candidates[0].content.parts[0].text;
+    return result?.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
   } catch (error) {
     console.log("Gemini API error:", error.message);
+    return null;
   }
 };
 

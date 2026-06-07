@@ -1,80 +1,76 @@
 import genToken from "../config/token.js"
 import User from "../models/user.model.js"
+import { authCookieOptions } from "../config/cookie.js"
 import bcrypt from "bcryptjs"
 
-export const signUp=async (req,res)=>{
-    try{
-        const{name,email,password}=req.body
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-        const existEmail=await User.findOne({email})
-        if(existEmail){
-            return res.status(400).json({message:"email already exists!"})
+export const signUp = async (req, res) => {
+    try {
+        const { name, email, password } = req.body
 
+        if (!name || !email || !password) {
+            return res.status(400).json({ message: "name, email and password are required" })
         }
-        if(password.length<6){
-            return res.status(400).json({message:"password must be atleast 6 characters !"})
-
+        if (!EMAIL_RE.test(email)) {
+            return res.status(400).json({ message: "invalid email format" })
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ message: "password must be at least 6 characters!" })
         }
 
-        const hashedPassword=await bcrypt.hash(password,10)
+        const existEmail = await User.findOne({ email })
+        if (existEmail) {
+            return res.status(409).json({ message: "email already exists!" })
+        }
 
-        const user=await User.create({
-            name,password:hashedPassword,email
-        })
-        
-        const token=await genToken(user._id)
+        const hashedPassword = await bcrypt.hash(password, 10)
 
-        res.cookie("token",token,{
-            httpOnly:true,
-            maxAge:7*24*60*60*1000,
-            sameSite:"strict",
-            secure:false
-        })
+        const user = await User.create({ name, password: hashedPassword, email })
 
-        return res.status(201).json(user)
+        const token = await genToken(user._id)
+        res.cookie("token", token, authCookieOptions)
 
-    }catch(error){
+        const safeUser = await User.findById(user._id).select("-password")
+        return res.status(201).json(safeUser)
+    } catch (error) {
         return res.status(500).json({ message: `sign up error: ${error.message}` })
-
     }
 }
 
-export const Login=async (req,res)=>{
-    try{
-        const{email,password}=req.body
+export const Login = async (req, res) => {
+    try {
+        const { email, password } = req.body
 
-        const user=await User.findOne({email})
+        if (!email || !password) {
+            return res.status(400).json({ message: "email and password are required" })
+        }
+
+        const user = await User.findOne({ email })
         if (!user) {
-            return res.status(400).json({ message: "Email does not exist!" });
+            return res.status(401).json({ message: "invalid email or password" })
         }
 
-        const isMatch=await bcrypt.compare(password,user.password)
-
-        if(!isMatch){
-            return res.status(400).json({message:"incorrect password"})
+        const isMatch = await bcrypt.compare(password, user.password)
+        if (!isMatch) {
+            return res.status(401).json({ message: "invalid email or password" })
         }
-        
-        const token=await genToken(user._id)
 
-        res.cookie("token",token,{
-            httpOnly:true,
-            maxAge:7*24*60*60*1000,
-            sameSite:"strict",
-            secure:false
-        })
+        const token = await genToken(user._id)
+        res.cookie("token", token, authCookieOptions)
 
-        return res.status(200).json(user)
-
-    }catch(error){
+        const safeUser = await User.findById(user._id).select("-password")
+        return res.status(200).json(safeUser)
+    } catch (error) {
         return res.status(500).json({ message: `login error: ${error.message}` })
     }
 }
 
-export const logOut=async (req,res)=>{
-    try{
-        res.clearCookie("token")
-        return res.status(200).json({message:"logout successfully"})
-    }catch(error){
+export const logOut = async (req, res) => {
+    try {
+        res.clearCookie("token", { ...authCookieOptions, maxAge: undefined })
+        return res.status(200).json({ message: "logout successfully" })
+    } catch (error) {
         return res.status(500).json({ message: `logout error: ${error.message}` })
     }
 }

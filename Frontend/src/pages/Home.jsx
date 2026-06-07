@@ -69,12 +69,19 @@ function Home() {
   };
 
   const handleCommand = (data) => {
+    if (!data || !data.type) {
+      console.warn("Invalid assistant response:", data);
+      return;
+    }
     const { type, userInput, response } = data;
     speak(response);
 
-    const query = encodeURIComponent(userInput);
+    const query = encodeURIComponent(userInput || "");
 
     switch (type) {
+      case 'google-open':
+        window.open('https://www.google.com', '_blank');
+        break;
       case 'google-search':
         window.open(`https://www.google.com/search?q=${query}`, '_blank');
         break;
@@ -90,9 +97,19 @@ function Home() {
       case 'weather-show':
         window.open('https://www.google.com/search?q=weather', '_blank');
         break;
+      case 'youtube-open':
+        window.open('https://www.youtube.com', '_blank');
+        break;
       case 'youtube-search':
       case 'youtube-play':
         window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+        break;
+      case 'general':
+      case 'get-time':
+      case 'get-date':
+      case 'get-day':
+      case 'get-month':
+        // Spoken-only intents: nothing to open.
         break;
       default:
         console.log('Unknown command:', type);
